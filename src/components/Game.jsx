@@ -131,6 +131,33 @@ const S = {
     position: "relative",
     padding: "0 clamp(16px,4vw,32px)",
   },
+  currentWordBox: {
+    textAlign: "center",
+    zIndex: 10,
+    position: "relative",
+  },
+  flag: { fontSize: "clamp(60px, 18vw, 100px)", marginBottom: 8 },
+  conveyor: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: "35%",
+    perspective: "600px",
+    overflow: "hidden",
+    pointerEvents: "none",
+    zIndex: 1,
+  },
+  conveyorWord: {
+    position: "absolute",
+    left: "50%",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+    transition: "all 0.6s ease-out",
+    textShadow: "0 2px 10px rgba(0,0,0,0.8)",
+  },
   wordEmoji: { fontSize: "clamp(48px, 14vw, 80px)", marginBottom: 12 },
   wordText: {
     fontSize: "clamp(40px, 12vw, 72px)",
@@ -256,12 +283,15 @@ const S = {
     pointerEvents: "none",
     zIndex: 5,
   },
-  // Floating emoji
-  floatEmoji: {
+  // Emoji particles
+  emojiParticle: {
     position: "absolute",
-    fontSize: "clamp(48px, 12vw, 72px)",
-    top: "28%",
+    fontSize: "clamp(36px, 10vw, 56px)",
     pointerEvents: "none",
+    zIndex: 30,
+    left: "50%",
+    top: "35%",
+    willChange: "transform, opacity",
   },
 };
 
@@ -310,12 +340,11 @@ export default function Game() {
   const [bestStreak, setBestStreak] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
   const [feedback, setFeedback] = useState(null);
-  const [floatingEmoji, setFloatingEmoji] = useState(null);
+  const [emojiParticles, setEmojiParticles] = useState([]);
   const [wordAnim, setWordAnim] = useState("");
   const [countdown, setCountdown] = useState(null);
-  const [emojiKey, setEmojiKey] = useState(0);
-  const [textInput, setTextInput] = useState("");
-  const textInputRef = useRef(null);
+  const [mistakes, setMistakes] = useState([]);
+  const [isReviewMode, setIsReviewMode] = useState(false);
   const timerRef = useRef(null);
   const feedbackTimeoutRef = useRef(null);
 
@@ -342,8 +371,17 @@ export default function Game() {
         setStreak(newStreak);
         setBestStreak((b) => Math.max(b, newStreak));
         setFeedback({ type: "correct", answer: currentWord.ru });
-        setFloatingEmoji(currentWord.emoji);
-        setEmojiKey((k) => k + 1);
+        // Генерируем частицы emoji = streak count (min 1, max 10)
+        const particleCount = Math.min(Math.max(newStreak, 1), 10);
+        const particles = Array.from({ length: particleCount }, (_, idx) => ({
+          id: Date.now() + idx,
+          emoji: currentWord.emoji,
+          angle: (360 / particleCount) * idx + (Math.random() * 40 - 20),
+          distance: 120 + Math.random() * 80,
+          duration: 0.7 + Math.random() * 0.4,
+          scale: 0.7 + Math.random() * 0.6,
+        }));
+        setEmojiParticles(particles);
         setWordAnim("animate-pop-in");
 
         if (newStreak >= 3 && newStreak % 3 === 0) {
@@ -367,6 +405,10 @@ export default function Game() {
           answer: currentWord.ru,
           said: alternatives[0] || "...",
         });
+        setMistakes((prev) => {
+          if (prev.some((m) => m.en === currentWord.en)) return prev;
+          return [...prev, currentWord];
+        });
         setWordAnim("animate-shake");
         playFail();
         vibrate([100, 50, 100]);
@@ -375,7 +417,7 @@ export default function Game() {
       setGameState("feedback");
       feedbackTimeoutRef.current = setTimeout(() => {
         setFeedback(null);
-        setFloatingEmoji(null);
+        setEmojiParticles([]);
         setWordAnim("");
         if (currentIndex + 1 < words.length) {
           setCurrentIndex((i) => i + 1);
@@ -388,26 +430,46 @@ export default function Game() {
     [gameState, currentWord, currentIndex, words.length, endGame],
   );
 
-  const { isListening, startListening } = useSpeechRecognition({
+  const { isListening, startListening, stopListening } = useSpeechRecognition({
     lang: "ru-RU",
     onResult: handleResult,
   });
 
-  const hasSpeechAPI = !!(
-    window.SpeechRecognition || window.webkitSpeechRecognition
-  );
+  const [micStarted, setMicStarted] = useState(false);
 
-  const handleTextSubmit = useCallback(() => {
-    const val = textInput.trim();
-    if (!val || gameState !== "playing") return;
-    handleResult([val.toLowerCase()]);
-    setTextInput("");
-  }, [textInput, gameState, handleResult]);
+  // Автостарт микрофона при начале игры
+  useEffect(() => {
+    if (gameState === "playing" && !micStarted) {
+      setMicStarted(true);
+      setTimeout(() => startListening(), 300);
+    }
+    if (gameState === "gameover" || gameState === "start") {
+      setMicStarted(false);
+      stopListening();
+    }
+  }, [gameState, micStarted, startListening, stopListening]);
 
   const startGame = useCallback(() => {
+    setMistakes([]);
+    setIsReviewMode(false);
     playStart();
     setCountdown(3);
   }, []);
+
+  const startReview = useCallback(() => {
+    setIsReviewMode(true);
+    setWords([...mistakes]);
+    setCurrentIndex(0);
+    setScore(0);
+    setCorrectCount(0);
+    streakRef.current = 0;
+    setStreak(0);
+    setBestStreak(0);
+    setTimeLeft(GAME_DURATION);
+    setFeedback(null);
+    setMistakes([]);
+    setGameState("playing");
+  }, [mistakes]);
 
   const countdownTimerRef = useRef(null);
   useEffect(() => {
@@ -452,6 +514,7 @@ export default function Game() {
 
   const progress = words.length > 0 ? (currentIndex / words.length) * 100 : 0;
   const timerDanger = timeLeft <= 10;
+  const upcomingWords = words.slice(currentIndex + 1, currentIndex + 4);
 
   // ─── COUNTDOWN ─── (ПЕРЕД start screen, чтобы показывался при countdown > 0)
   if (countdown !== null && countdown > 0) {
@@ -504,8 +567,9 @@ export default function Game() {
 
   // ─── GAME OVER ───
   if (gameState === "gameover") {
-    const totalAnswered = Math.max(currentIndex, 1);
-    const accuracy = Math.round((correctCount / totalAnswered) * 100);
+    const totalAnswered = correctCount + mistakes.length;
+    const accuracy =
+      totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
     return (
       <div style={S.page}>
         <div
@@ -529,7 +593,7 @@ export default function Game() {
               margin: "0 0 8px",
             }}
           >
-            Время вышло!
+            {isReviewMode ? "Повторение завершено!" : "Время вышло!"}
           </h2>
 
           <div style={S.statsGrid}>
@@ -551,21 +615,104 @@ export default function Game() {
             </div>
           </div>
 
-          <button
-            onClick={startGame}
-            style={S.btn}
-            className="animate-glow-pulse"
-            onMouseDown={(e) =>
-              (e.currentTarget.style.transform = "scale(0.95)")
-            }
-            onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-            onTouchStart={(e) =>
-              (e.currentTarget.style.transform = "scale(0.95)")
-            }
-            onTouchEnd={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          {mistakes.length > 0 && (
+            <div
+              style={{
+                width: "100%",
+                maxWidth: 360,
+                margin: "0 auto",
+                background: "rgba(239,68,68,0.1)",
+                border: "1px solid rgba(239,68,68,0.25)",
+                borderRadius: 14,
+                padding: "clamp(10px,2.5vw,16px)",
+                marginBottom: "clamp(12px,3vw,20px)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "clamp(13px,3.5vw,16px)",
+                  fontWeight: 700,
+                  color: "#fca5a5",
+                  marginBottom: 8,
+                }}
+              >
+                Ошибки ({mistakes.length}):
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  justifyContent: "center",
+                }}
+              >
+                {mistakes.map((m) => (
+                  <span
+                    key={m.en}
+                    style={{
+                      background: "rgba(255,255,255,0.08)",
+                      borderRadius: 8,
+                      padding: "4px 10px",
+                      fontSize: "clamp(12px,3vw,14px)",
+                      color: "#fca5a5",
+                    }}
+                  >
+                    {m.emoji} {m.en} — {m.ru}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+              justifyContent: "center",
+            }}
           >
-            Ещё раз 🔄
-          </button>
+            {mistakes.length > 0 && (
+              <button
+                onClick={startReview}
+                style={{
+                  ...S.btn,
+                  background: "linear-gradient(135deg, #ef4444, #f97316)",
+                  boxShadow:
+                    "0 0 30px rgba(239,68,68,0.4), 0 4px 20px rgba(0,0,0,0.3)",
+                }}
+                onMouseDown={(e) =>
+                  (e.currentTarget.style.transform = "scale(0.95)")
+                }
+                onMouseUp={(e) =>
+                  (e.currentTarget.style.transform = "scale(1)")
+                }
+                onTouchStart={(e) =>
+                  (e.currentTarget.style.transform = "scale(0.95)")
+                }
+                onTouchEnd={(e) =>
+                  (e.currentTarget.style.transform = "scale(1)")
+                }
+              >
+                Повторить ошибки 🔁
+              </button>
+            )}
+            <button
+              onClick={startGame}
+              style={S.btn}
+              className="animate-glow-pulse"
+              onMouseDown={(e) =>
+                (e.currentTarget.style.transform = "scale(0.95)")
+              }
+              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              onTouchStart={(e) =>
+                (e.currentTarget.style.transform = "scale(0.95)")
+              }
+              onTouchEnd={(e) => (e.currentTarget.style.transform = "scale(1)")}
+            >
+              Новая игра 🔄
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -616,24 +763,58 @@ export default function Game() {
 
       {/* Word area */}
       <div style={S.wordArea}>
-        {/* Floating emoji */}
-        {floatingEmoji && (
-          <div key={emojiKey} className="animate-float-up" style={S.floatEmoji}>
-            {floatingEmoji}
-          </div>
-        )}
+        {/* Emoji particles */}
+        {emojiParticles.map((p) => {
+          const rad = (p.angle * Math.PI) / 180;
+          const tx = Math.cos(rad) * p.distance;
+          const ty = Math.sin(rad) * p.distance;
+          return (
+            <div
+              key={p.id}
+              style={{
+                ...S.emojiParticle,
+                transform: `translate(-50%, -50%) scale(${p.scale})`,
+                animation: `emoji-burst ${p.duration}s ease-out forwards`,
+                "--tx": `${tx}px`,
+                "--ty": `${ty}px`,
+              }}
+            >
+              {p.emoji}
+            </div>
+          );
+        })}
 
         <div style={S.wordNum}>
           {currentIndex + 1} / {words.length}
         </div>
 
         {currentWord && (
-          <div style={S.center} className={wordAnim}>
-            <div style={S.wordEmoji}>{currentWord.emoji}</div>
+          <div style={S.currentWordBox} className={wordAnim} key={currentIndex}>
+            <div style={S.flag}>{currentWord.emoji}</div>
             <div style={S.wordText}>{currentWord.en}</div>
             <div style={S.wordHint}>Скажи перевод на русском 🇷🇺</div>
           </div>
         )}
+
+        {/* Конвейер — следующие слова уходят вниз */}
+        <div style={S.conveyor}>
+          {upcomingWords.map((w, i) => (
+            <div
+              key={`conv-${currentIndex}-${i}`}
+              style={{
+                ...S.conveyorWord,
+                transform: `translateX(-50%) translateZ(${-120 - i * 100}px) translateY(${30 + i * 40}px)`,
+                opacity: Math.max(0.15, 0.5 - i * 0.15),
+                fontSize: `clamp(${16 - i * 3}px, ${4 - i}vw, ${22 - i * 4}px)`,
+              }}
+            >
+              <span style={{ fontSize: "clamp(28px, 8vw, 44px)" }}>
+                {w.emoji}
+              </span>
+              <span style={{ fontWeight: 800 }}>{w.en}</span>
+            </div>
+          ))}
+        </div>
 
         {/* Feedback */}
         {feedback && (
@@ -712,104 +893,11 @@ export default function Game() {
           </div>
         )}
 
-        {/* Текстовый ввод */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 12,
-            width: "100%",
-            maxWidth: 320,
-            padding: "0 16px",
-          }}
-        >
-          <input
-            ref={textInputRef}
-            type="text"
-            value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleTextSubmit();
-            }}
-            placeholder="Введи перевод..."
-            disabled={gameState !== "playing"}
-            style={{
-              flex: 1,
-              background: "rgba(255,255,255,0.08)",
-              border: "1px solid rgba(255,255,255,0.15)",
-              borderRadius: 12,
-              padding: "12px 16px",
-              color: "#fff",
-              fontSize: "clamp(14px, 4vw, 18px)",
-              fontFamily: "inherit",
-              outline: "none",
-              WebkitTapHighlightColor: "transparent",
-            }}
-          />
-          <button
-            onClick={handleTextSubmit}
-            disabled={gameState !== "playing" || !textInput.trim()}
-            style={{
-              background: textInput.trim()
-                ? "linear-gradient(135deg, #6366f1, #8b5cf6)"
-                : "rgba(255,255,255,0.1)",
-              border: "none",
-              borderRadius: 12,
-              padding: "12px 18px",
-              color: "#fff",
-              fontSize: "clamp(14px, 4vw, 18px)",
-              fontWeight: 700,
-              cursor: textInput.trim() ? "pointer" : "default",
-              fontFamily: "inherit",
-              opacity: textInput.trim() ? 1 : 0.5,
-            }}
-          >
-            ✓
-          </button>
-        </div>
-
         {/* Кнопка микрофона */}
-        {hasSpeechAPI && (
-          <>
-            <button
-              style={micBtnStyle}
-              onClick={() => {
-                if (gameState === "playing" && !isListening) {
-                  startListening();
-                }
-              }}
-            >
-              {isListening ? (
-                <div
-                  style={{
-                    width: 22,
-                    height: 22,
-                    background: "#fff",
-                    borderRadius: 3,
-                  }}
-                />
-              ) : (
-                "🎤"
-              )}
-            </button>
-            <div style={S.micLabel}>
-              {isListening ? "Слушаю..." : "или нажми 🎤"}
-            </div>
-          </>
-        )}
 
-        {!hasSpeechAPI && (
-          <div
-            style={{
-              fontSize: "clamp(11px, 2.5vw, 13px)",
-              color: "#6b7280",
-              marginTop: 4,
-            }}
-          >
-            Голосовой ввод недоступен в этом браузере
-          </div>
-        )}
+        <div style={S.micLabel}>
+          {isListening ? "🟢 Слушаю — говори!" : "Нажми для старта 🎤"}
+        </div>
       </div>
     </div>
   );
