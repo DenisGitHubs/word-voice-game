@@ -3,13 +3,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getShuffledWords } from "../data/words";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
 import {
-    playCountdown,
-    playFail,
-    playGameOver,
-    playStart,
-    playStreak,
-    playSuccess,
-    vibrate,
+  playCountdown,
+  playFail,
+  playGameOver,
+  playStart,
+  playStreak,
+  playSuccess,
+  vibrate,
 } from "../utils/sounds";
 
 const GAME_DURATION = 60;
@@ -24,8 +24,7 @@ const S = {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    background:
-      "linear-gradient(180deg, #0a0a1a 0%, #10103a 40%, #180a30 70%, #0a0a1a 100%)",
+    background: "transparent",
     color: "#fff",
     fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
     overflow: "hidden",
@@ -36,8 +35,7 @@ const S = {
     height: "100%",
     display: "flex",
     flexDirection: "column",
-    background:
-      "linear-gradient(180deg, #0a0a1a 0%, #10103a 40%, #180a30 70%, #0a0a1a 100%)",
+    background: "transparent",
     color: "#fff",
     fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
     overflow: "hidden",
@@ -50,21 +48,23 @@ const S = {
     fontWeight: 900,
     letterSpacing: "-0.03em",
     margin: "0 0 8px",
-    background: "linear-gradient(135deg, #a78bfa, #818cf8, #6366f1)",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
+    color: "#fff",
+    textShadow:
+      "0 2px 20px rgba(99,102,241,0.8), 0 0 40px rgba(99,102,241,0.4)",
   },
   subtitle: {
     fontSize: "clamp(16px, 4vw, 20px)",
-    color: "#9ca3af",
+    color: "#e5e7eb",
     margin: "0 0 4px",
+    textShadow: "0 1px 8px rgba(0,0,0,0.8)",
   },
   desc: {
     fontSize: "clamp(13px, 3vw, 15px)",
-    color: "#6b7280",
+    color: "#d1d5db",
     margin: "0 0 40px",
     maxWidth: 300,
     lineHeight: 1.5,
+    textShadow: "0 1px 8px rgba(0,0,0,0.8)",
   },
   btn: {
     background: "linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7)",
@@ -86,14 +86,15 @@ const S = {
     gap: 12,
     marginTop: 28,
     fontSize: "clamp(12px, 3vw, 14px)",
-    color: "#6b7280",
+    color: "#d1d5db",
     flexWrap: "wrap",
     justifyContent: "center",
+    textShadow: "0 1px 6px rgba(0,0,0,0.8)",
   },
   countdownNum: {
     fontSize: "clamp(100px, 25vw, 160px)",
     fontWeight: 900,
-    textShadow: "0 0 60px rgba(99,102,241,0.6)",
+    textShadow: "0 0 60px rgba(99,102,241,0.6), 0 4px 20px rgba(0,0,0,0.8)",
   },
   // Top bar
   topBar: {
@@ -105,6 +106,7 @@ const S = {
     zIndex: 10,
     fontSize: "clamp(18px, 5vw, 26px)",
     fontWeight: 800,
+    textShadow: "0 2px 10px rgba(0,0,0,0.8)",
   },
   progressOuter: {
     margin: "0 clamp(16px,4vw,24px)",
@@ -135,16 +137,19 @@ const S = {
     fontWeight: 900,
     letterSpacing: "-0.02em",
     lineHeight: 1.1,
+    textShadow: "0 2px 20px rgba(0,0,0,0.9), 0 0 40px rgba(0,0,0,0.5)",
   },
   wordHint: {
     fontSize: "clamp(14px, 3.5vw, 18px)",
-    color: "#6b7280",
+    color: "#d1d5db",
     marginTop: 12,
+    textShadow: "0 1px 8px rgba(0,0,0,0.8)",
   },
   wordNum: {
     fontSize: "clamp(12px, 3vw, 14px)",
-    color: "#6b7280",
+    color: "#d1d5db",
     marginBottom: 8,
+    textShadow: "0 1px 6px rgba(0,0,0,0.8)",
   },
   // Feedback
   feedbackBox: {
@@ -198,8 +203,9 @@ const S = {
   },
   micLabel: {
     fontSize: "clamp(12px, 3vw, 14px)",
-    color: "#6b7280",
+    color: "#d1d5db",
     marginTop: 10,
+    textShadow: "0 1px 6px rgba(0,0,0,0.8)",
   },
   // Waves
   wavesContainer: {
@@ -220,10 +226,12 @@ const S = {
     maxWidth: 360,
   },
   statCard: {
-    background: "rgba(255,255,255,0.06)",
+    background: "rgba(0,0,0,0.4)",
     borderRadius: 16,
     padding: "clamp(12px, 3vw, 20px) 8px",
     textAlign: "center",
+    backdropFilter: "blur(8px)",
+    border: "1px solid rgba(255,255,255,0.1)",
   },
   statValue: { fontSize: "clamp(24px, 6vw, 36px)", fontWeight: 900 },
   statLabel: {
@@ -298,6 +306,7 @@ export default function Game() {
   const [score, setScore] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [streak, setStreak] = useState(0);
+  const streakRef = useRef(0);
   const [bestStreak, setBestStreak] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
   const [feedback, setFeedback] = useState(null);
@@ -326,7 +335,8 @@ export default function Game() {
       const isCorrect = checkAnswer(alternatives, currentWord.ru);
 
       if (isCorrect) {
-        const newStreak = streak + 1;
+        const newStreak = streakRef.current + 1;
+        streakRef.current = newStreak;
         setScore((s) => s + (newStreak >= 3 ? 2 : 1));
         setCorrectCount((c) => c + 1);
         setStreak(newStreak);
@@ -350,6 +360,7 @@ export default function Game() {
           vibrate(50);
         }
       } else {
+        streakRef.current = 0;
         setStreak(0);
         setFeedback({
           type: "wrong",
@@ -374,7 +385,7 @@ export default function Game() {
         }
       }, 1500);
     },
-    [gameState, currentWord, streak, currentIndex, words.length, endGame],
+    [gameState, currentWord, currentIndex, words.length, endGame],
   );
 
   const { isListening, startListening } = useSpeechRecognition({
@@ -407,6 +418,7 @@ export default function Game() {
       setCurrentIndex(0);
       setScore(0);
       setCorrectCount(0);
+      streakRef.current = 0;
       setStreak(0);
       setBestStreak(0);
       setTimeLeft(GAME_DURATION);

@@ -1,3 +1,4 @@
+import CameraBackground from "./components/CameraBackground";
 import Game from "./components/Game";
 
 function App() {
@@ -8,9 +9,22 @@ function App() {
         height: "100vh",
         overflow: "hidden",
         background: "#0a0a0f",
+        position: "relative",
       }}
     >
-      <Game />
+      {/* Фронтальная камера на весь экран как фон */}
+      <CameraBackground />
+      {/* UI игры поверх камеры */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: 10,
+          width: "100%",
+          height: "100%",
+        }}
+      >
+        <Game />
+      </div>
     </div>
   );
 }
