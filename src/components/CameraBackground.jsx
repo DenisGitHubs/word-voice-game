@@ -44,7 +44,11 @@ export default function CameraBackground() {
     async function startCamera() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 1280 } },
+          video: {
+            facingMode: "user",
+            width: { ideal: 480 },
+            height: { ideal: 640 },
+          },
           audio: false,
         });
         if (videoRef.current) {
@@ -83,11 +87,7 @@ export default function CameraBackground() {
       )}
       {/* Затемнение поверх видео чтобы текст читался */}
       <div style={styles.overlay} />
-      {error && (
-        <div style={styles.errorBox}>
-          Камера недоступна
-        </div>
-      )}
+      {error && <div style={styles.errorBox}>Камера недоступна</div>}
     </div>
   );
 }
