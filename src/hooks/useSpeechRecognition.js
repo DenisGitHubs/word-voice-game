@@ -1,24 +1,51 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+// Запрашиваем разрешение на микрофон один раз через getUserMedia,
+// чтобы SpeechRecognition не спрашивал повторно на мобильных
+let micPermissionGranted = false;
+export async function ensureMicPermission() {
+  if (micPermissionGranted) return true;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+    micPermissionGranted = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function useSpeechRecognition({ lang = "ru-RU", onResult }) {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
   const onResultRef = useRef(onResult);
   const shouldRestartRef = useRef(false);
+  const restartTimerRef = useRef(null);
 
   useEffect(() => {
     onResultRef.current = onResult;
   }, [onResult]);
 
-  const ensureRecognition = useCallback(() => {
-    if (recognitionRef.current) return recognitionRef.current;
+  const doStart = useCallback(() => {
+    // Очищаем pending restart
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+
+    if (recognitionRef.current) {
+      // Переиспользуем существующий экземпляр
+      try {
+        recognitionRef.current.start();
+      } catch {
+        /* уже запущен */
+      }
+      return;
+    }
 
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Распознавание речи не поддерживается. Используйте Chrome.");
-      return null;
-    }
+    if (!SpeechRecognition) return;
 
     const recognition = new SpeechRecognition();
     recognition.lang = lang;
@@ -26,9 +53,7 @@ export function useSpeechRecognition({ lang = "ru-RU", onResult }) {
     recognition.maxAlternatives = 5;
     recognition.continuous = true;
 
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
+    recognition.onstart = () => setIsListening(true);
 
     recognition.onresult = (event) => {
       const last = event.results[event.results.length - 1];
@@ -41,66 +66,61 @@ export function useSpeechRecognition({ lang = "ru-RU", onResult }) {
     };
 
     recognition.onerror = (event) => {
-      if (event.error === "no-speech" || event.error === "aborted") {
-        // Тихо перезапускаем тот же экземпляр
-        if (shouldRestartRef.current) {
-          setTimeout(() => {
-            if (shouldRestartRef.current && recognitionRef.current) {
-              try {
-                recognitionRef.current.start();
-              } catch {
-                /* уже запущен */
-              }
-            }
-          }, 300);
-        }
-      } else if (event.error === "not-allowed") {
+      if (event.error === "not-allowed") {
         setIsListening(false);
         recognitionRef.current = null;
+        return;
       }
+      // no-speech, aborted, network — перезапустим в onend
     };
 
     recognition.onend = () => {
-      // Перезапускаем тот же экземпляр без создания нового
-      if (shouldRestartRef.current && recognitionRef.current) {
-        setTimeout(() => {
+      if (shouldRestartRef.current) {
+        // Перезапускаем тот же экземпляр
+        restartTimerRef.current = setTimeout(() => {
           if (shouldRestartRef.current && recognitionRef.current) {
             try {
               recognitionRef.current.start();
             } catch {
-              /* уже запущен */
+              /* ok */
             }
           }
-        }, 200);
+        }, 250);
       } else {
         setIsListening(false);
       }
     };
 
     recognitionRef.current = recognition;
-    return recognition;
-  }, [lang]);
-
-  const startListening = useCallback(() => {
-    shouldRestartRef.current = true;
-    const recognition = ensureRecognition();
-    if (!recognition) return;
     try {
       recognition.start();
     } catch {
-      // Уже запущен — ок
+      /* ok */
     }
-  }, [ensureRecognition]);
+  }, [lang]);
+
+  const startListening = useCallback(async () => {
+    const ok = await ensureMicPermission();
+    if (!ok) {
+      alert("Разрешите доступ к микрофону для голосового ввода.");
+      return;
+    }
+    shouldRestartRef.current = true;
+    doStart();
+  }, [doStart]);
 
   const stopListening = useCallback(() => {
     shouldRestartRef.current = false;
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
       } catch {
         /* ok */
       }
-      recognitionRef.current = null;
     }
     setIsListening(false);
   }, []);

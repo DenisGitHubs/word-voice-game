@@ -46,8 +46,6 @@ export default function CameraBackground() {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            width: { ideal: 480 },
-            height: { ideal: 640 },
           },
           audio: false,
         });

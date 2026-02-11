@@ -12,8 +12,8 @@ import {
   vibrate,
 } from "../utils/sounds";
 
-const GAME_DURATION = 60;
-const WORDS_PER_ROUND = 30;
+const GAME_DURATION = 30;
+const WORDS_PER_ROUND = 10;
 
 /* ── inline style objects (Tailwind-independent) ── */
 const S = {
@@ -878,26 +878,7 @@ export default function Game() {
 
       {/* Ввод: микрофон + текст */}
       <div style={S.micArea}>
-        {isListening && (
-          <div style={S.wavesContainer}>
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                style={{
-                  ...S.waveBar,
-                  animation: `listening-wave 0.8s ease-in-out ${i * 0.15}s infinite`,
-                  height: 8,
-                }}
-              />
-            ))}
-          </div>
-        )}
 
-        {/* Кнопка микрофона */}
-
-        <div style={S.micLabel}>
-          {isListening ? "🟢 Слушаю — говори!" : "Нажми для старта 🎤"}
-        </div>
       </div>
     </div>
   );

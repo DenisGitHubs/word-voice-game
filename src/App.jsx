@@ -1,7 +1,13 @@
+import { useEffect } from "react";
 import CameraBackground from "./components/CameraBackground";
 import Game from "./components/Game";
+import { ensureMicPermission } from "./hooks/useSpeechRecognition";
 
 function App() {
+  useEffect(() => {
+    ensureMicPermission();
+  }, []);
+
   return (
     <div
       style={{
