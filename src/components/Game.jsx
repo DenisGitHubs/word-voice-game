@@ -13,7 +13,7 @@ import {
 } from "../utils/sounds";
 
 const GAME_DURATION = 30;
-const WORDS_PER_ROUND = 10;
+const WORDS_PER_ROUND = 15;
 
 /* ── inline style objects (Tailwind-independent) ── */
 const S = {
